@@ -21,7 +21,7 @@ class PerceptualModel(torch.nn.Module):
         hidden_size: int = 1,
         lora: bool = False,
         baseline: bool = False,
-        load_dir: str = "./models",
+        load_dir: str = "data/dreamsim",
         normalize_embeds: bool = False,
         device: str = "cuda",
         **kwargs,
@@ -198,16 +198,18 @@ def download_weights(cache_dir: PathLike, dreamsim_type: str) -> None:
         print(f"Using cached {cache_dir}")
     else:
         print("Downloading checkpoint")
-        torch.hub.download_url_to_file(url=dreamsim_weights[dreamsim_type], dst=cache_dir / "pretrained.zip")
+        zipfile_path = cache_dir / "pretrained.zip"
+        torch.hub.download_url_to_file(url=dreamsim_weights[dreamsim_type], dst=zipfile_path)
         print("Unzipping...")
-        with zipfile.ZipFile(cache_dir / "pretrained.zip", "r") as zip_ref:
+        with zipfile.ZipFile(zipfile_path, "r") as zip_ref:
             zip_ref.extractall(cache_dir)
+        zipfile_path.unlink()
 
 
 def dreamsim(
     pretrained: bool = True,
     device="cuda",
-    cache_dir: PathLike = "./models",
+    cache_dir: PathLike = "./data/dreamsim",
     normalize_embeds: bool = True,
     dreamsim_type: str = "ensemble",
 ):
