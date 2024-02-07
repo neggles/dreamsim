@@ -1,20 +1,24 @@
-import torch
-from .vision_transformer import vit_base, VisionTransformer
+from os import PathLike
+from pathlib import Path
+
 import open_clip
-import os
+import torch
+
+from .vision_transformer import VisionTransformer, vit_base
 
 
-def load_open_clip_as_dino(patch_size, load_dir="./models", l14=False):
+def load_open_clip_as_dino(patch_size, load_dir: PathLike = "./models", l14=False):
+    load_dir = Path(load_dir).resolve()
     if l14:
-        sd = torch.load(os.path.join(load_dir, 'open_clipl14_as_dino_vitl.pth.tar'), map_location='cpu')
-        dino_vit = VisionTransformer(**sd['kwargs'])
-        sd = sd['state_dict']
+        sd = torch.load(load_dir / "open_clipl14_as_dino_vitl.pth.tar", map_location="cpu")
+        dino_vit = VisionTransformer(**sd["kwargs"])
+        sd = sd["state_dict"]
     else:
         dino_vit = vit_base(patch_size=patch_size)
-        sd = torch.load(os.path.join(load_dir, f'open_clip_vitb{patch_size}_pretrain.pth.tar'))['state_dict']
+        sd = torch.load(load_dir / f"open_clip_vitb{patch_size}_pretrain.pth.tar")["state_dict"]
 
     dino_vit.pos_drop = torch.nn.LayerNorm(dino_vit.embed_dim)
-    proj = sd.pop('proj')
+    proj = sd.pop("proj")
     dino_vit.load_state_dict(sd)
     for m in dino_vit.modules():
         if isinstance(m, torch.nn.LayerNorm):
@@ -29,14 +33,16 @@ def _sanity_check(patch_size, l14=False):
 
     if l14:
         dino_vit, proj = load_open_clip_as_dino(patch_size, l14=True)
-        clip_all, _, preprocess = open_clip.create_model_and_transforms(f'ViT-L-{patch_size}',
-                                                                        pretrained='laion400m_e31', cache_dir=".")
+        clip_all, _, preprocess = open_clip.create_model_and_transforms(
+            f"ViT-L-{patch_size}", pretrained="laion400m_e31", cache_dir="."
+        )
     else:
         dino_vit, proj = load_open_clip_as_dino(patch_size)
-        clip_all, _, preprocess = open_clip.create_model_and_transforms(f'ViT-B-{patch_size}',
-                                                                        pretrained='laion400m_e31', cache_dir=".")
+        clip_all, _, preprocess = open_clip.create_model_and_transforms(
+            f"ViT-B-{patch_size}", pretrained="laion400m_e31", cache_dir="."
+        )
 
-    x = preprocess(Image.open('images/img_a_1.png'))[None, ...]
+    x = preprocess(Image.open("images/img_a_1.png"))[None, ...]
 
     # intermidiate representations
     cpre = []
@@ -65,15 +71,17 @@ def _sanity_check(patch_size, l14=False):
 
     for i, (c, v) in enumerate(zip(cpre, vpre)):
         delta = (c - v).abs()
-        assert torch.isclose(c, v).all(), f'layer {i}:\ndelta={delta}\n{torch.isclose(c, v)}'
-        print(f'{i}: {delta.abs().max()}')
+        if not torch.allclose(c, v):
+            raise ValueError(f"layer {i}:\ndelta={delta}\n{torch.isclose(c, v)}")
+        print(f"{i}: {delta.abs().max()}")
 
     delta = (ce - ve).abs()
-    assert torch.isclose(ce, ve).all(), f'final rep:\ndelta={delta}\n{torch.isclose(ce, ve)}'
-    print(f'emb space: {delta.abs().max()}')
+    if not torch.allclose(c, v):
+        raise ValueError(f"final rep:\ndelta={delta}\n{torch.isclose(ce, ve)}")
+    print(f"emb space: {delta.abs().max()}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     _sanity_check(patch_size=32)
-    #_sanity_check(patch_size=16)
-    #_sanity_check(patch_size=14)
+    # _sanity_check(patch_size=16)
+    # _sanity_check(patch_size=14)
