@@ -3,8 +3,9 @@ from os import PathLike
 from pathlib import Path
 
 import torch
-import torch.nn.functional as F
 from peft import LoraConfig, PeftModel, get_peft_model
+from torch import Tensor, nn
+from torch.nn import functional as F
 from torchvision.transforms import v2 as T
 
 from .config import dreamsim_args, dreamsim_weights
@@ -12,7 +13,7 @@ from .feature_extraction.extractor import ViTExtractor
 from .feature_extraction.vit_wrapper import ViTConfig, ViTModel
 
 
-class PerceptualModel(torch.nn.Module):
+class PerceptualModel(nn.Module):
     def __init__(
         self,
         model_type: str = "dino_vitb16",
@@ -23,7 +24,6 @@ class PerceptualModel(torch.nn.Module):
         baseline: bool = False,
         load_dir: str = "data/dreamsim",
         normalize_embeds: bool = False,
-        device: str = "cuda",
         **kwargs,
     ):
         """Initializes a perceptual model that returns the perceptual distance between two image tensors.
@@ -52,21 +52,28 @@ class PerceptualModel(torch.nn.Module):
         self.stride_list = [int(x) for x in stride.split(",")]
         self._validate_args()
         self.extract_feats_list = []
-        self.extractor_list = []
+        self.extractor_list = nn.ModuleList()
         self.embed_size = 0
         self.hidden_size = hidden_size
         self.baseline = baseline
         for model_type, feat_type, stride in zip(self.model_list, self.feat_type_list, self.stride_list):
-            self.extractor_list.append(ViTExtractor(model_type, stride, load_dir, device=device))
+            self.extractor_list.append(ViTExtractor(model_type, stride, load_dir))
             self.extract_feats_list.append(self._get_extract_fn(model_type, feat_type))
             self.embed_size += EMBED_DIMS[model_type][feat_type]
         self.lora = lora
         if self.lora or self.baseline:
-            self.mlp = torch.nn.Identity()
+            self.mlp = nn.Identity()
         else:
             self.mlp = MLP(in_features=self.embed_size, hidden_size=self.hidden_size)
         self.normalize_embeds = normalize_embeds
-        self.device = device
+
+    @property
+    def device(self) -> torch.device:
+        return next(iter(self.state_dict().values())).device
+
+    @property
+    def dtype(self) -> torch.dtype:
+        return next(iter(self.state_dict().values())).dtype
 
     def forward(self, img_a, img_b):
         """
@@ -148,7 +155,7 @@ class PerceptualModel(torch.nn.Module):
             return (0.229, 0.224, 0.225)
 
 
-class MLP(torch.nn.Module):
+class MLP(nn.Module):
     """
     MLP head with a single hidden layer and residual connection.
     """
@@ -156,8 +163,8 @@ class MLP(torch.nn.Module):
     def __init__(self, in_features: int, hidden_size: int = 512):
         super().__init__()
         self.hidden_size = hidden_size
-        self.fc1 = torch.nn.Linear(in_features, self.hidden_size, bias=True)
-        self.fc2 = torch.nn.Linear(self.hidden_size, in_features, bias=True)
+        self.fc1 = nn.Linear(in_features, self.hidden_size, bias=True)
+        self.fc2 = nn.Linear(self.hidden_size, in_features, bias=True)
 
     def forward(self, img):
         x = self.fc1(img)

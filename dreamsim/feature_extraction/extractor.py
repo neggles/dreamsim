@@ -17,7 +17,7 @@ Mostly copy-paste from https://github.com/ShirAmir/dino-vit-features.
 """
 
 
-class ViTExtractor:
+class ViTExtractor(nn.Module):
     """This class facilitates extraction of features, descriptors, and saliency maps from a ViT.
 
     We use the following notation in the documentation of the module's methods:
@@ -44,6 +44,7 @@ class ViTExtractor:
         :param stride: stride of first convolution layer. small stride -> higher resolution.
         :param load_dir: location of pretrained ViT checkpoints.
         """
+        super().__init__()
         self.model_type = model_type
         self.device = device
         self.model = ViTExtractor.create_model(model_type, load_dir)
